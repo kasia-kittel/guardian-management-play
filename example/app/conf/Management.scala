@@ -1,5 +1,8 @@
 package conf
 
+import akka.actor.ActorSystem
+import akka.stream.{ActorMaterializer, Materializer}
+import com.google.inject.AbstractModule
 import com.gu.management._
 import com.gu.management.logback._
 import com.gu.management.play.{Management, RequestMetrics}
@@ -18,7 +21,14 @@ object Switches {
   val all = List(omniture, takeItDown, Healthcheck.switch)
 }
 
-object PlayExampleRequestMetrics extends RequestMetrics.Standard
+
+object AppMetrics {
+  implicit val system: ActorSystem = ActorSystem()
+  implicit val mat: Materializer =  ActorMaterializer()
+
+  val PlayExampleRequestMetrics = RequestMetrics().Standard
+}
+
 
 // properties
 object Properties {
@@ -29,13 +39,22 @@ object Properties {
 
 object ExampleManagement extends Management {
   val applicationName: String = "Example Play App"
+
   lazy val pages = List(
     new DummyPage(),
     new ManifestPage(),
     new Switchboard(applicationName, Switches.all),
-    StatusPage(applicationName, ExceptionCountMetric :: ServerErrorCounter :: ClientErrorCounter :: PlayExampleRequestMetrics.asMetrics),
+    StatusPage(applicationName, ExceptionCountMetric :: ServerErrorCounter :: ClientErrorCounter :: AppMetrics.PlayExampleRequestMetrics.asMetrics),
     new HealthcheckManagementPage(),
     new PropertiesPage(Properties.all),
     new LogbackLevelPage(applicationName)
   )
+}
+
+
+class ManagementModule extends AbstractModule {
+  override def configure(): Unit = {
+    bind(classOf[Management])
+      .toInstance(ExampleManagement)
+  }
 }

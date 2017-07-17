@@ -2,9 +2,11 @@ package com.gu.management.play
 
 import com.gu.management.ManagementPage
 import com.gu.management.internal._
-import play.api.inject.{Binding, ApplicationLifecycle, Module}
+import play.api.inject.{ApplicationLifecycle, Binding, Module}
 import play.api._
 import javax.inject._
+
+import com.google.inject.AbstractModule
 
 import scala.concurrent.Future
 
@@ -13,11 +15,9 @@ trait Management {
   val pages: List[ManagementPage]
 }
 
-class InternalManagementModule extends Module {
-  def bindings(environment: Environment, configuration: Configuration): Seq[Binding[_]] = {
-    Seq(bind[InternalManagementServer].to[InternalManagementServerImpl]
-    )
-  }
+class InternalManagementModule extends AbstractModule {
+  def configure(): Unit =
+    bind(classOf[InternalManagementServer]).to(classOf[InternalManagementServerImpl]).asEagerSingleton()
 }
 
 trait InternalManagementServer {
@@ -25,7 +25,7 @@ trait InternalManagementServer {
 }
 
 @Singleton
-class InternalManagementServerImpl @Inject() (lifecycle: ApplicationLifecycle)
+class InternalManagementServerImpl @Inject() (lifecycle: ApplicationLifecycle, management: Management)
     extends InternalManagementServer {
 
   implicit val log = Logger(getClass)
@@ -43,6 +43,8 @@ class InternalManagementServerImpl @Inject() (lifecycle: ApplicationLifecycle)
     ManagementServer.shutdown()
     Future.successful(())
   }
+
+  startServer(management.applicationName, management.pages)
 }
 
 object InternalManagementServer {

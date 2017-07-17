@@ -1,46 +1,49 @@
 package com.gu.management.play
 
-import play.api.libs.concurrent.Execution.Implicits._
+import javax.inject.Inject
 import _root_.play.api.mvc._
-import concurrent.Future
-import util.Try
+import akka.stream.Materializer
 import com.gu.management._
 
-object RequestMetrics {
+import scala.concurrent.Future
+import scala.util.Try
 
-  trait Standard {
+abstract class MetricsFilter()(implicit val mat: Materializer) extends Filter {
+  val metrics: Seq[Metric]
+}
+
+case class RequestMetrics @Inject()(implicit val mat:Materializer) {
+
+  object Standard {
     val knownResultTypeCounters = List(OkCounter(), RedirectCounter(), NotFoundCounter(), ErrorCounter())
 
     val otherCounter = OtherCounter(knownResultTypeCounters)
 
-    val asFilters: List[MetricsFilter] = List(TimingFilter(), CountersFilter(otherCounter :: knownResultTypeCounters))
+    val asFilters: List[MetricsFilter] = List(TimingFilter, CountersFilter(otherCounter :: knownResultTypeCounters))
 
     val asMetrics: List[Metric] = asFilters.flatMap(_.metrics).distinct
   }
 
-  trait MetricsFilter extends Filter {
-    val metrics: Seq[Metric]
-  }
+  object TimingFilter extends MetricsFilter {
 
-  object TimingFilter {
-    def apply(): MetricsFilter = {
-      val timingMetric = new TimingMetric("performance", "request_duration", "Client requests", "incoming requests to the application")
+    val timingMetric = new TimingMetric("performance", "request_duration", "Client requests", "incoming requests to the application")
 
-      new MetricsFilter {
-        val metrics = Seq(timingMetric)
+    val metrics = Seq(timingMetric)
 
-        override def apply(next: RequestHeader => Future[Result])(request: RequestHeader): Future[Result] = {
-          val s = new StopWatch
-          val result = next(request)
-          result.onComplete { _ => timingMetric.recordTimeSpent(s.elapsed) }
-          result
-        }
+    override def apply(next: RequestHeader => Future[Result])(request: RequestHeader): Future[Result] = {
+      implicit val ec = mat.executionContext
+      val s = new StopWatch
+      next(request).map { result =>
+        timingMetric.recordTimeSpent(s.elapsed)
+        result
       }
     }
   }
 
   object CountersFilter {
     def apply(counters: List[Counter]): MetricsFilter = new MetricsFilter {
+
+      implicit val ec = mat.executionContext
       val metrics = counters.map(_.countMetric)
 
       override def apply(next: RequestHeader => Future[Result])(request: RequestHeader): Future[Result] = {

@@ -25,7 +25,7 @@ object `package` extends ListMultiMaps {
 
   implicit class Application2GetConfigurationProperty(app: Application) {
     def getConfigurationProperty(key: String, default: String): String = {
-      app.configuration.getString(key).getOrElse(default)
+      app.configuration.get[String](key)
     }
   }
 
